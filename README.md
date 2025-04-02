@@ -1,2 +1,2 @@
-# AI for School
-Model AI for School
+# Project Computer Vision
+Tổng hợp miniproject về Computer Vision
