@@ -32,13 +32,27 @@ class MyDataset(data.Dataset):
         img, boxes, labels = self.transform(img, self.phase, anno_info[:, :4], anno_info[:, 4])  # Chuyen doi du lieu
 
         # BGR -> RGB, [height, width, channels] -> [channels, height, width]
-        torch.from_numpy(img[:, :, (2, 1, 0)]).permute(2, 0, 1)
+        img = torch.from_numpy(img[:, :, (2, 1, 0)]).permute(2, 0, 1)
 
         # ground truth
         gt = np.hstack((boxes, np.expand_dims(labels, axis=1)))  # Chuyen doi annotation ve dang [x1, y1, x2, y2, label]
 
         return img, gt, height, width  # Tra ve anh, annotation, height, width
     
+
+def my_collate_fn(batch):
+    targets = []
+    imgs = []
+
+    for sample in batch:
+        imgs.append(sample[0]) # sample[0] la anh
+        targets.append(torch.FloatTensor(sample[1])) # sample[1] la annotation
+    
+    # (3, 300, 300) -> (batch_size, 3, 300, 300)
+    imgs = torch.stack(imgs, dim=0)  # Chuyen doi danh sach imgs ve tensor
+
+    return imgs, targets  # Tra ve tensor imgs va danh sach target
+
 
 if __name__ == "__main__":
     classes = ["aeroplane", "bicycle", "bird", "boat", "bottle",
@@ -60,4 +74,20 @@ if __name__ == "__main__":
                             transform=DataTransform(input_size, color_mean), anno_xml=Anno_xml(classes))
     
     # print(train_dataset.__len__())  # In ra so luong anh trong tap train
-    print(train_dataset.__getitem__(1)) # In ra item dau tien trong tap train
+    # print(train_dataset.__getitem__(1)) # In ra item dau tien trong tap train
+
+    batch_size = 4
+    train_dataloader = data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=my_collate_fn)
+    val_dataloader = data.DataLoader(val_dataset, batch_size=batch_size, shuffle=False, collate_fn=my_collate_fn)
+
+    dataloader_dict = {
+        "train": train_dataloader,
+        "val": val_dataloader
+    }
+
+    batch_iter = iter(dataloader_dict["val"])
+    images, targets = next(batch_iter)  # Get 1 batch
+    print(images.shape)  # In ra kich thuoc cua batch
+    print(len(targets))  # In ra so luong annotation trong batch
+    print(targets[1].size())  # In ra kich thuoc annotation dau tien trong batch
+                              # numObjecs, 5 (x1, y1, x2, y2, label)
