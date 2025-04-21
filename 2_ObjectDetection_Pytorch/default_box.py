@@ -9,7 +9,6 @@ cfg = {
     "min_size": [30, 60, 111, 162, 213, 264], # Kich thuoc cua default box
     "max_size": [60, 111, 162, 213, 264, 315], # Kich thuoc cua default box
     "aspect_ratios": [[2], [2, 3], [2, 3], [2, 3], [2], [2]], # Ti le khung hinh cho source1->source6
-
 }
 class DefBox():
     def __init__(self, cfg):
