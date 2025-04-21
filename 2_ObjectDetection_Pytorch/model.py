@@ -129,6 +129,22 @@ class SSD(nn.Module):
             self.detect = Detect()
 
 
+def decode(loc, defbox_list):
+    """
+    parameters:
+        loc: [8732, 4] (delta x, delta y, delta w, delta h)
+        defbox_list: [8732, 4] (cx_def, cy_def, w_def, h_def)
+    return:
+        boxes: [xmin, ymin, xmax, ymax]
+    """
+
+    boxes = torch.cat((defbox_list[:, :2] + 0.1*loc[:, :2]*defbox_list[:, 2:], # cx, cy
+                       defbox_list[:, 2:]*torch.exp(loc[:, 2:]*0.2)), dim=1) # w, h
+    boxes[:, :2] -= boxes[:, 2:]/2  # xmin, ymin
+    boxes[:, 2:] += boxes[:, :2]  # xmax, ymax
+
+    return boxes.clamp_(min=0, max=1)  # Chuan hoa ve [0,1]
+
 
 if __name__ == "__main__":
     # vgg = create_vgg()
