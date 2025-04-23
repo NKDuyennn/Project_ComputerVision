@@ -145,6 +145,87 @@ def decode(loc, defbox_list):
 
     return boxes.clamp_(min=0, max=1)  # Chuan hoa ve [0,1]
 
+# non_max_suppression: Ham loai bo cac box trung lap
+def nms(boxes, scores, overlap=0.45, top_k=200):
+    """
+    parameters:
+        boxes: [Num_boxes, 4] (xmin, ymin, xmax, ymax)
+        scores: [Num_boxes, num_classes]
+        overlap: Ti le trung lap
+        top_k: So luong box duoc chon
+    return:
+        keep: cac box duoc chon
+    """
+    count = 0
+    keep = scores.new(scores.size(0)).zero_().long()  # Danh sach cac box duoc chon
+
+    x1 = boxes[:, 0]  # xmin
+    y1 = boxes[:, 1]  # ymin
+    x2 = boxes[:, 2]  # xmax
+    y2 = boxes[:, 3]  # ymax
+
+    # area = (x2 - x1 + 1) * (y2 - y1 + 1)  # Dien tich cua box
+    area = torch.mul(x2-x1, y2-y1)  # Dien tich cua box
+
+    tmp_x1 = boxes.new()
+    tmp_y1 = boxes.new()
+    tmp_x2 = boxes.new()
+    tmp_y2 = boxes.new()
+    tmp_w = boxes.new()
+    tmp_h = boxes.new()
+
+    value, idx = scores.sort(0)  # Sap xep cac box theo score
+    idx = idx[-top_k:]  # Lay top_k box co score cao nhat
+    
+    while idx.numel() > 0: # khi idx khong rong
+        i = idx[-1]
+        
+        keep[count] = i  # Luu lai box co score cao nhat
+        count += 1
+        
+        if idx.size(0) == 1:  # Neu chi con 1 box
+            break
+
+        idx = idx[:-1]  # Lay tat ca cac box khong phai i
+
+        # information of boxes
+        torch.index_select(x1, 0, idx, out=tmp_x1)  # Chon cac box tu x1
+        torch.index_select(y1, 0, idx, out=tmp_y1)
+        torch.index_select(x2, 0, idx, out=tmp_x2)
+        torch.index_select(y2, 0, idx, out=tmp_y2)
+
+        tmp_x1 = torch.clamp(tmp_x1, min=x1[i]) # x1[i] if  tmp_x1 < x1[i] else tmp_x1
+        tmp_y1 = torch.clamp(tmp_y1, min=y1[i])
+        tmp_x2 = torch.clamp(tmp_x2, max=x2[i])
+        tmp_y2 = torch.clamp(tmp_y2, max=y2[i]) # x2[i] if tmp_y2 > y2[i] else tmp_y2
+
+        # Chuyen ve tensor co size ma index duoc giam di 1
+        tmp_w.resize_as(tmp_x2)  # Tao tensor tmp_w co kich thuoc nhu tmp_x2
+        tmp_h.resize_as(tmp_y2)  # Tao tensor tmp_h co kich thuoc nhu tmp_y2
+        
+        tmp_w = tmp_x2 - tmp_x1  # Chieu rong cua box
+        tmp_h = tmp_y2 - tmp_y1  # Chieu cao cua box
+
+        tmp_w = torch.clamp(tmp_w, min=0.0)  # Chuan hoa ve [0,1]
+        tmp_h = torch.clamp(tmp_h, min=0.0)
+
+        # Dien tich giao nhau
+        inter = tmp_w * tmp_h
+        # Dien tich cac box khac i 
+        others_area = torch.index_select(area, 0, idx)
+        # Dien tich hop
+        union = area[i] + others_area - inter
+
+        # Ti le giao/ hop
+        iou = inter / union
+
+        idx = idx[iou.le(overlap)]  # Chon cac box co iou nho hon overlap
+
+    return keep, count  # Tra ve danh sach cac box duoc chon va so luong box duoc chon
+
+
+
+
 
 if __name__ == "__main__":
     # vgg = create_vgg()
