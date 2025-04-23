@@ -224,6 +224,51 @@ def nms(boxes, scores, overlap=0.45, top_k=200):
     return keep, count  # Tra ve danh sach cac box duoc chon va so luong box duoc chon
 
 
+class Detect(Function):
+    def __init__(self, conf_thresh=0.01, top_k=200, nms_thresh=0.45):
+        self.softmax = nn.Softmax(dim=-1)  # Ham softmax
+        self.conf_thresh = conf_thresh
+        self.top_k = top_k
+        self.nms_thresh = nms_thresh
+
+    def forward(self, loc_data, conf_data, dbox_list):
+        num_batch = loc_data.size(0)    # So luong anh
+        num_dbox = loc_data.size(1)  # So luong default box 8732
+        num_classes = conf_data.size(2) # So luong class 21
+
+        conf_data = self.softmax(conf_data)    
+        # (batch_num, num_dbox, num_classes) -> (batch_num, num_classes, num_dbox)
+        conf_preds = conf_data.transpose(2, 1)
+
+        output = torch.zeros(num_batch, num_classes, self.top_k, 5)  # Khoi tao output
+        # output: (batch_num, num_classes, top_k, 5) 5 la (x1, y1, x2, y2,)
+        for i in range(num_batch):  # Duyet qua tung anh
+            # Chuyen doi loc_data ve box
+            decode_boxes = decode(loc_data[i], dbox_list) 
+
+            # Sao chep conf_preds[i] vao conf_scores[i]
+            conf_scores = conf_preds[i].clone() 
+
+            for cl in range(1, num_classes):  # Duyet qua tung class
+                # Chon cac box co score > conf_thresh
+                c_mask = conf_scores[cl].gt(self.conf_thresh)
+                scores = conf_scores[cl][c_mask]
+
+                if scores.numel() == 0:  # Neu khong co box nao
+                    continue
+                
+                # Dua chieu ve giong chieu cua decode_boxes de tinh toan
+                l_mask = c_mask.unsqueeze(1).expand_as(decode_boxes)    # (8732,4) 
+
+                boxes = decode_boxes[l_mask].view(-1, 4)  
+
+                ids, count = nms(boxes, scores, overlap=self.nms_thresh, top_k=self.top_k)  # Thuc hien nms
+
+                output[i, cl, :count] = torch.cat((scores[ids[:count]].unsqueeze(1), boxes[ids[:count]]), dim=1)  # Luu lai cac box duoc chon
+
+        return output
+    
+
 
 
 
