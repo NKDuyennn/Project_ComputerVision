@@ -37,21 +37,13 @@ def create_extras():
     cfgs = [256, 512, 128, 256, 128, 256, 128, 256]
 
     layers += [nn.Conv2d(in_channels, cfgs[0], kernel_size=1)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[0], cfgs[1], kernel_size=3, stride=2, padding=1)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[1], cfgs[2], kernel_size=1)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[2], cfgs[3], kernel_size=3, stride=2, padding=1)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[3], cfgs[4], kernel_size=1)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[4], cfgs[5], kernel_size=3)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[5], cfgs[6], kernel_size=1)]
-    layers += [nn.ReLU(inplace=True)]
     layers += [nn.Conv2d(cfgs[6], cfgs[7], kernel_size=3)]
-    layers += [nn.ReLU(inplace=True)]
 
     return nn.ModuleList(layers)  # Tra ve moduleList chua cac lop CNN
 
@@ -114,6 +106,8 @@ class SSD(nn.Module):
         self.phase = phase
         self.num_classes = cfg["num_classes"]
         self.input_size = cfg["input_size"]
+        self.cfg = cfg
+        self.phase = phase
 
         # create main modules
         self.vgg = create_vgg()
@@ -127,6 +121,58 @@ class SSD(nn.Module):
 
         if phase == "inference":
             self.detect = Detect()
+
+    def forward(self, x):
+        sources = list()
+        loc = list()
+        conf = list()
+
+        # Xu ly cac lop CNN
+        for k in range(23):  # Xu ly 23 lop CNN
+            x = self.vgg[k](x)  # Xu ly 23 lop CNN
+
+        # source1
+        source1 = self.L2Norm(x)  # Xu ly L2Norm cho source1
+        sources.append(source1)  # Luu lai source1
+
+        for k in range(23, len(self.vgg)):  # Xu ly tu lop 23 den lop cuoi cung
+            x = self.vgg[k](x)  # Xu ly tu lop 23 den lop cuoi cung
+
+        # source2
+        sources.append(x)  # Luu lai source2
+
+        #source3->source6
+        for k, v in enumerate(self.extras):
+            x = nn.ReLU(v(x), inplace=True)
+
+            if k % 2 == 1:  # Neu k la so le
+                sources.append(x)  # Luu lai cac source
+
+        for (x, l, c) in zip(sources, self.loc, self.conf): 
+            # aspect_ratio: 4, 6, 6, 6, 4, 4
+            # x: [batch_size, 4*aspect_ratio_num, feature_map_height, feture_map_width]
+            # => [batch_size, feature_map_height, feture_map_width, 4*aspect_ratio_num,]
+            loc.append(l(x).permute(0, 2, 3, 1).contiguous())  # Chuyen doi chieu tensor
+            conf.append(c(x).permute(0, 2, 3, 1).contiguous())  # Chuyen doi chieu tensor
+
+        # loc: [batch_size, 8732*4] (delta x, delta y, delta w, delta h)
+        # conf: [batch_size, 8732*21] (conf1, conf2, conf3, conf4, conf5, conf6, conf7, conf8, conf9, conf10)
+        loc = torch.cat([o.view(o.size(0), -1) for o in loc], 1)  # Chuyen doi ve tensor 1 chieu
+        conf = torch.cat([o.view(o.size(0), -1) for o in conf], 1)  # Chuyen doi ve tensor 1 chieu
+        
+        # loc: [batch_size, 8732, 4] (delta x, delta y, delta w, delta h)
+        # conf: [batch_size, 8732, 21] (conf1, conf2, conf3, conf4, conf5, conf6, conf7, conf8, conf9, conf10)
+        loc = loc.view(loc.size(0), -1, 4)  # Chuyen doi ve tensor 2 chieu
+        conf = conf.view(conf.size(0), -1, self.num_classes)  # Chuyen doi ve tensor 2 chieu
+        
+        output = (loc, conf, self.dbox_list)  # Tra ve output
+
+        if self.phase == "inference":
+           return self.detect(output[0], output[1], output[2])  # Tra ve output sau khi thuc hien detect
+        else:
+            return output
+        
+
 
 
 def decode(loc, defbox_list):
