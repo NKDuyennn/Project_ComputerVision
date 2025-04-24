@@ -123,7 +123,7 @@ def train_model(net, dataloaders_dict, criterion, optimizer, num_epochs=10):
 
                     loss_l, loss_c = criterion(outputs, targets) # Tinh loss
                     loss = loss_l + loss_c
-
+                        
                     if phase == "train":
                         loss.backward()         # Tinh gradient
 
