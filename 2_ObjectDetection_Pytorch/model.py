@@ -143,7 +143,7 @@ class SSD(nn.Module):
 
         #source3->source6
         for k, v in enumerate(self.extras):
-            x = nn.ReLU(v(x), inplace=True)
+            x = F.relu(v(x), inplace=True)
 
             if k % 2 == 1:  # Neu k la so le
                 sources.append(x)  # Luu lai cac source

@@ -16,18 +16,18 @@ class MultiBoxLoss(nn.Module):
     def forward(self, predictions, targets):
         loc_data, conf_data, dbox_list = predictions
 
-        # loc_data: (batch_size, num_dbox, num_classes)
+        # loc_data: (batch_size, num_dbox, 4)
         # conf_data: (batch_size, num_dbox, num_classes)
         num_batch = loc_data.size(0)  # batch size
         num_dbox = loc_data.size(1)  # number of default boxes
-        num_classes = loc_data.size(2)  # number of classes
+        num_classes = conf_data.size(2)  # number of classes
 
         # t la target
         conf_t_label = torch.LongTensor(num_batch, num_dbox).to(self.device)  # (batch_size, num_dbox)
         loc_t = torch.Tensor(num_batch, num_dbox, 4).to(self.device)  # (batch_size, num_dbox, 4)
 
         for idx in range(num_batch):
-            truths = targets[idx][:, :, :-1].to(self.device)    # (xmin, ymin, xmax, ymax)
+            truths = targets[idx][:, :-1].to(self.device)    # (xmin, ymin, xmax, ymax)
             labels = targets[idx][:, -1].to(self.device)     # (label)
 
             dbox = dbox_list.to(self.device)
@@ -49,7 +49,7 @@ class MultiBoxLoss(nn.Module):
         # loss_conf
         # CrossEntropyLoss (Softmax Loss)
         batch_conf = conf_data.view(-1, num_classes)  # (num_batch, num_dbox, num_classes)
-        loss_conf = F.cross_entropy(batch_conf, conf_t_label, reduction="none")
+        loss_conf = F.cross_entropy(batch_conf, conf_t_label.view(-1), reduction="none")
 
         # hard negative mining
         num_pos = pos_mask.long().sum(1, keepdim=True)  # (batch_size, 1)
@@ -59,7 +59,7 @@ class MultiBoxLoss(nn.Module):
         _ ,idx_rank = loss_idx.sort(1)  # (batch_size, num_dbox)
             # idx_rank la thong so de biet duoc do lon loss nam o vi tri bao nhieu
         
-        num_neg = torch.clamp(num_pos*self.neg_pos, max=num_pos)  # so luong negative boxes
+        num_neg = torch.clamp(num_pos*self.neg_pos, max=num_dbox)  # so luong negative boxes
 
         neg_mask = idx_rank < num_neg.expand_as(idx_rank)  # (batch_size, num_dbox)
 
@@ -67,7 +67,7 @@ class MultiBoxLoss(nn.Module):
         neg_idx_mask = neg_mask.unsqueeze(2).expand_as(conf_data)
 
         conf_t_pre = conf_data[(pos_idx_mask+neg_idx_mask).gt(0)].view(-1, num_classes)  # (num_pos+num_neg, num_classes)
-        conf_t_label_ = conf_t_label[(pos_idx_mask+neg_idx_mask).gt(0)]  # (num_pos+num_neg,)
+        conf_t_label_ = conf_t_label[(pos_mask+neg_mask).gt(0)]  # (num_pos+num_neg,)
 
         loss_conf = F.cross_entropy(conf_t_pre, conf_t_label_, reduction="sum")
 
